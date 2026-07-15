@@ -118,7 +118,7 @@ class Goda extends ComicSource {
   // unique id of the source
   key = "goda"
 
-  version = "1.1.0"
+  version = "1.2.0"
 
   minAppVersion = "1.4.0"
 
@@ -134,12 +134,12 @@ class Goda extends ComicSource {
     api: {
       title: "API域名",
       type: "input",
-      default: "api-get-v3.mgsearcher.com"
+      default: "v2.apikk.top"
     },
     image: {
       title: "图片域名",
       type: "input",
-      default: "f40-1-4.g-mh.online"
+      default: "c-nd3-1.6wm.top"
     }
   }
 
@@ -148,7 +148,7 @@ class Goda extends ComicSource {
   }
 
   get apiUrl() {
-    return `https://${this.loadSetting("api")}/api`;
+    return `https://${this.loadSetting("api")}/api/v2`;
   }
 
   get imageUrl() {
@@ -462,7 +462,7 @@ class Goda extends ComicSource {
         throw "无效的章节ID";
       }
       const ids = epId.split("@");
-      const res = await Network.get(`${this.apiUrl}/v2/chapter/getinfo?m=${ids[0]}&c=${ids[1]}`, this.headers);
+      const res = await Network.get(`${this.apiUrl}/chapter/getinfo?m=${ids[0]}&c=${ids[1]}`, this.headers);
       if (res.status !== 200) {
         throw `Invalid status code: ${res.status}`;
       }

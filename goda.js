@@ -1,14 +1,12 @@
 /**
- * ChapterImageDecoder - ported from keiyoushi/extensions-source (PR #16898)
+ * 章节图片解码器 — 移植自 keiyoushi/extensions-source (PR #16898)
  *
- * The /api/v2/chapter/getinfo endpoint returns the image list as an obfuscated
- * string instead of a plain array. This reverses the site's client-side decoder
- * back into the original JSON array of images.
+ * /api/v2/chapter/getinfo 接口返回的图片列表是混淆后的字符串，而非普通数组。
+ * 此解码器将该字符串还原为原始 JSON 图片数组。
  *
- * Pipeline: strip "J7r" prefix / "nQ" suffix -> split into 3 parts around the
- * "kD" and "W4s" markers -> reorder to part3+part1+part2 -> reverse every 2nd
- * 7-char block -> map the custom alphabet back to standard base64url -> base64
- * decode -> UTF-8 JSON.
+ * 解码流程：去除 "J7r" 前缀 / "nQ" 后缀 → 按 "kD" 和 "W4s" 标记拆分为 3 段
+ * → 重新排序为 段3+段1+段2 → 每隔一个 7 字符块反转 → 将自定义字母表映射回
+ * 标准 base64url → base64 解码 → UTF-8 JSON。
  */
 const STD = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 const CUSTOM = "_-9876543210abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -18,7 +16,7 @@ const DECODE_MARKER2 = "W4s";
 const DECODE_SUFFIX = "nQ";
 const DECODE_GROUP = 7;
 
-// Precomputed lookup: custom-alphabet char code -> standard base64url char (-1 = invalid)
+// 预计算的查找表：自定义字母表字符码 → 标准 base64url 字符码（-1 表示无效）
 const DECODE_TABLE = new Array(128).fill(-1);
 for (let i = 0; i < CUSTOM.length; i++) {
     DECODE_TABLE[CUSTOM.charCodeAt(i)] = STD.charCodeAt(i);
@@ -48,17 +46,17 @@ function decodeChapterImages(input) {
         throw "未知的章节数据格式";
     }
 
-    // Reorder: part3 + part1 + part2
+    // 重新排序：段3 + 段1 + 段2
     const reordered = part3 + part1 + part2;
 
-    // Unzigzag: reverse every 2nd GROUP-char block
+    // 去锯齿：每隔一个 GROUP 长度的块做反转
     let unzigzagged = "";
     for (let i = 0, block = 0; i < reordered.length; i += DECODE_GROUP, block++) {
         const chunk = reordered.substring(i, Math.min(i + DECODE_GROUP, reordered.length));
         unzigzagged += (block % 2 === 1) ? chunk.split('').reverse().join('') : chunk;
     }
 
-    // Map custom alphabet to standard base64url
+    // 将自定义字母表映射为标准 base64url
     let standard = "";
     for (let i = 0; i < unzigzagged.length; i++) {
         const code = unzigzagged.charCodeAt(i);
@@ -69,15 +67,15 @@ function decodeChapterImages(input) {
         standard += String.fromCharCode(mapped);
     }
 
-    // Base64 decode (pure JS, no atob). Convert base64url to standard base64 first.
+    // Base64 解码（纯 JS 实现，venera 运行时不支持 atob）。先将 base64url 转为标准 base64。
     const standardBase64 = standard.replace(/-/g, '+').replace(/_/g, '/');
     const json = decodeBase64(standardBase64);
     return JSON.parse(json);
 }
 
 /**
- * Pure JavaScript base64 decoder (venera runtime lacks atob).
- * Decodes base64 to byte characters for JSON parsing.
+ * 纯 JavaScript base64 解码器（venera 运行时缺少 atob）。
+ * 将 base64 解码为字节字符，供 JSON 解析使用。
  */
 function decodeBase64(str) {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -110,19 +108,19 @@ function decodeBase64(str) {
 
 /** @type {import('./_venera_.js')} */
 class Goda extends ComicSource {
-  // Note: The fields which are marked as [Optional] should be removed if not used
+  // 注意：标记为 [可选] 的字段如果不使用，应将其删除
 
-  // name of the source
+  // 源名称
   name = "GoDa漫画"
 
-  // unique id of the source
+  // 源唯一标识
   key = "goda"
 
-  version = "1.2.0"
+  version = "1.2.1"
 
   minAppVersion = "1.4.0"
 
-  // update url
+  // 更新地址
   url = "https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/goda.js"
 
   settings = {
@@ -179,14 +177,14 @@ class Goda extends ComicSource {
     return result;
   }
 
-  // explore page list
+  // 发现页列表
   explore = [
     {
-      // title of the page.
-      // title is used to identify the page, it should be unique
+      // 页面标题
+      // title 用于标识页面，必须唯一
       title: this.name,
 
-      /// multiPartPage or multiPageComicList or mixed
+      /// multiPartPage 或 multiPageComicList 或 mixed
       type: "multiPartPage",
 
       load: async () => {
@@ -220,9 +218,9 @@ class Goda extends ComicSource {
     }
   ]
 
-  // categories
+  // 分类
   category = {
-    /// title of the category page, used to identify the page, it should be unique
+    /// 分类页标题，用于标识页面，必须唯一
     title: this.name,
     parts: [
       {
@@ -318,11 +316,11 @@ class Goda extends ComicSource {
         ],
       }
     ],
-    // enable ranking page
+    // 是否启用排行榜页面
     enableRankingPage: false,
   }
 
-  /// category comic loading related
+  /// 分类漫画加载
   categoryComics = {
     load: async (category, params, options, page) => {
       const res = await Network.get(`${this.baseUrl}${params}/page/${page}`, this.headers);
@@ -343,10 +341,10 @@ class Goda extends ComicSource {
     }
   }
 
-  /// search related
+  /// 搜索相关
   search = {
     load: async (keyword, options, page) => {
-      const res = await Network.get(`${this.baseUrl}/s/${keyword}?page=${page}`);
+      const res = await Network.get(`${this.baseUrl}/s/${keyword}?page=${page}`, this.headers);
       if (res.status !== 200) {
         throw `Invalid status code: ${res.status}`;
       }
@@ -362,11 +360,11 @@ class Goda extends ComicSource {
         maxPage: maxPage
       };
     },
-    // enable tags suggestions
+    // 是否启用标签建议
     enableTagsSuggestions: false,
   }
 
-  /// single comic related
+  /// 单部漫画相关
   comic = {
     onThumbnailLoad: (url) => {
       return {
@@ -374,7 +372,7 @@ class Goda extends ComicSource {
       }
     },
     loadInfo: async (id) => {
-      const res = await Network.get(this.baseUrl + id);
+      const res = await Network.get(this.baseUrl + id, this.headers);
       if (res.status !== 200) {
         throw `Invalid status code: ${res.status}`;
       }
@@ -424,16 +422,24 @@ class Goda extends ComicSource {
         throw "无法获取漫画ID";
       }
 
-      const jsonRes = await Network.get(`${this.apiUrl}/manga/get?mid=${mangaId}&mode=all&t=${Date.now()}`, this.headers);
-      const jsonData = JSON.parse(jsonRes.body);
       const chapters = {};
-      if (jsonData["data"] && jsonData["data"]["chapters"]) {
-        for (let ch of jsonData["data"]["chapters"]) {
-          if (ch["id"] != null && ch["attributes"] && ch["attributes"]["title"] != null) {
-            chapters[`${mangaId}@${ch["id"]}`] = ch["attributes"]["title"];
+      const jsonRes = await Network.get(`${this.apiUrl}/manga/get?mid=${mangaId}&mode=all&t=${Date.now()}`, this.headers);
+      if (jsonRes.status !== 200) {
+        throw `Invalid status code: ${jsonRes.status}`;
+      }
+      try {
+        const jsonData = JSON.parse(jsonRes.body);
+        if (jsonData && jsonData["data"] && jsonData["data"]["chapters"]) {
+          for (let ch of jsonData["data"]["chapters"]) {
+            if (ch["id"] != null && ch["attributes"] && ch["attributes"]["title"] != null) {
+              chapters[`${mangaId}@${ch["id"]}`] = ch["attributes"]["title"];
+            }
           }
         }
+      } catch (e) {
+        throw "章节数据解析失败";
       }
+
       const recommend = [];
       for (let item of document.querySelectorAll("div.cardlist > div.pb-2")) {
         const recLink = item.querySelector("a");
@@ -466,16 +472,30 @@ class Goda extends ComicSource {
       if (res.status !== 200) {
         throw `Invalid status code: ${res.status}`;
       }
-      const jsonData = JSON.parse(res.body);
+      let jsonData;
+      try {
+        jsonData = JSON.parse(res.body);
+      } catch (e) {
+        throw "章节数据解析失败";
+      }
+
+      // 空值安全检查：防止 API 返回异常数据结构导致崩溃
+      if (!jsonData || !jsonData["data"] || !jsonData["data"]["info"]
+          || !jsonData["data"]["info"]["images"]) {
+        throw "章节图片数据为空";
+      }
       const imagesRaw = jsonData["data"]["info"]["images"]["images"];
 
       let imagesList;
       if (typeof imagesRaw === "string") {
-        // v2 API: obfuscated string - decode it back to JSON array
+        // v2 API：混淆字符串 — 解码还原为 JSON 数组
         imagesList = decodeChapterImages(imagesRaw);
-      } else {
-        // v1 API (backward compatibility): array of {url: "...", order: N}
+      } else if (Array.isArray(imagesRaw)) {
+        // v1 API（向后兼容）：{url: "...", order: N} 数组
         imagesList = imagesRaw;
+      } else {
+        // 未知格式的图片数据
+        throw "未知的图片数据格式";
       }
 
       const images = [];
@@ -487,7 +507,7 @@ class Goda extends ComicSource {
       return { images };
     },
 
-    // enable tags translate
+    // 是否启用标签翻译
     enableTagsTranslate: false,
   }
 }

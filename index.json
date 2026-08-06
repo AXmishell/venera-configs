@@ -174,7 +174,8 @@
         "name": "jcomic.net",
         "fileName": "jcomic.js",
         "key": "jcomic",
-        "version": "1.0.0"
+        "version": "1.0.4",
+        "description": "大陆无法访问，遇到timeout需挂代理"
     },
     {
         "name": "热辣漫画",
@@ -206,6 +207,6 @@
         "name": "嬉皮漫画",
         "fileName": "hipmh.js",
         "key": "hipmh",
-        "version": "1.0.0"
+        "version": "1.0.1"
     }
 ]

@@ -3,6 +3,31 @@
 const JCOMIC_BASE = "https://jcomic.net";
 const JCOMIC_REFERER = JCOMIC_BASE + "/";
 
+// jcomic.net 的 DNS 在部分地区会被污染(解析到 Facebook IP 导致连接失败),
+// 提供"域名"设置让用户填写可用域名/自建反代绕过。init 时根据设置更新。
+let jcomicBaseUrl = JCOMIC_BASE;
+let jcomicReferer = JCOMIC_REFERER;
+
+// images.jcomic.net 受 Cloudflare 保护, 需要主站下发的 jcomic_access cookie
+// (有效期约 1 天, init 时动态刷新, 失败用已知固定值兜底)
+let jcomicAccessCookie = "jcomic_access=verified_user";
+
+/**
+ * 获取用于 images.jcomic.net 的访问 cookie (主站访问会下发)
+ * @param {string} setCookieHeader - 响应头里的 set-cookie (可能是字符串或数组)
+ */
+function refreshAccessCookie(setCookieHeader) {
+  if (!setCookieHeader) return;
+  const list = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+  for (const item of list) {
+    const kv = String(item).split(";")[0].trim();
+    if (kv.startsWith("jcomic_access=")) {
+      jcomicAccessCookie = kv;
+      return;
+    }
+  }
+}
+
 function trimTitle(raw) {
   if (!raw) return "";
   const idx = raw.lastIndexOf(" (");
@@ -32,6 +57,32 @@ function parseEpIdFromHref(href) {
     return decodeURIComponent(parts[2]);
   }
   return null;
+}
+
+/**
+ * 解码章节页图片的真实 URL
+ *
+ * 站点 2026-07 改版后, img 的真实地址不再放在 src 中,
+ * 而是编码在 data-locked 属性里:
+ *   data-locked = "JCOMIC_TRAP_" + 反转(base64(真实URL))
+ * 解码步骤: 去前缀 -> 反转 -> base64 解码
+ * @param {string} locked - data-locked 属性值
+ * @returns {string} 真实图片 URL, 解码失败返回 ""
+ */
+function decodeLockedImageUrl(locked) {
+  if (!locked || typeof locked !== "string") return "";
+  if (!locked.startsWith("JCOMIC_TRAP_")) return "";
+  try {
+    // 去掉前缀并反转 (反转后可能的 '=' 填充会跑到开头, 一并移除)
+    let s = locked.substring("JCOMIC_TRAP_".length).split("").reverse().join("").replace(/=/g, "");
+    // 补齐 base64 长度
+    s += "=".repeat((4 - (s.length % 4)) % 4);
+    // 兼容 url-safe base64
+    s = s.replace(/-/g, "+").replace(/_/g, "/");
+    return Convert.decodeUtf8(Convert.decodeBase64(s));
+  } catch (e) {
+    return "";
+  }
 }
 
 /**
@@ -126,7 +177,7 @@ class JComic extends ComicSource {
   name = "jcomic.net";
   key = "jcomic";
 
-  version = "1.0.0";
+  version = "1.0.4";
   minAppVersion = "1.4.6";
 
   url =
@@ -134,16 +185,45 @@ class JComic extends ComicSource {
 
   currentComic = null;
 
+  // 可配置域名: 部分地区 jcomic.net 的 DNS 被污染, 可填入备用域名或自建反代
+  settings = {
+    domains: {
+      title: "域名",
+      type: "input",
+      default: "jcomic.net",
+      validator: "^[a-zA-Z0-9.-]+$",
+    },
+  };
+
   _buildUrl(path) {
     if (path.startsWith("http://") || path.startsWith("https://")) return path;
     if (!path.startsWith("/")) path = "/" + path;
-    return JCOMIC_BASE + path;
+    return jcomicBaseUrl + path;
   }
 
   /**
    * [Optional] init
+   * 1) 按设置刷新可用域名 (DNS 污染时用户可填镜像/反代)
+   * 2) 访问主站获取 jcomic_access cookie, images.jcomic.net 的图片请求需要携带
    */
-  init() {}
+  async init() {
+    try {
+      const domain = String(this.loadSetting("domains") || "jcomic.net")
+        .trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+      if (domain) {
+        jcomicBaseUrl = "https://" + domain;
+        jcomicReferer = jcomicBaseUrl + "/";
+      }
+    } catch (e) {
+      // 保留默认域名
+    }
+    try {
+      const res = await Network.get(jcomicBaseUrl + "/", { referer: jcomicReferer });
+      refreshAccessCookie(res.headers && res.headers["set-cookie"]);
+    } catch (e) {
+      // 保留兜底 cookie
+    }
+  }
 
   /// explore
   explore = [
@@ -157,12 +237,13 @@ class JComic extends ComicSource {
         const path = page === 1 ? `/cat/${encoded}` : `/cat/${encoded}/${page}`;
         const url = this._buildUrl(path);
 
-        const resp = await Network.get(url, { referer: JCOMIC_REFERER });
+        const resp = await Network.get(url, { referer: jcomicReferer });
         if (resp.status !== 200) throw new Error(resp.status);
 
         const doc = new HtmlDocument(resp.body);
         const comics = parseComicList(doc);
         const maxPage = parseMaxPage(doc);
+        doc.dispose();
 
         return { comics, maxPage };
       },
@@ -274,12 +355,13 @@ class JComic extends ComicSource {
       const path = page === 1 ? `/cat/${encoded}` : `/cat/${encoded}/${page}`;
       const url = this._buildUrl(path);
 
-      const resp = await Network.get(url, { referer: JCOMIC_REFERER });
+      const resp = await Network.get(url, { referer: jcomicReferer });
       if (resp.status !== 200) throw new Error(resp.status);
 
       const doc = new HtmlDocument(resp.body);
       const comics = parseComicList(doc);
       const maxPage = parseMaxPage(doc);
+      doc.dispose();
 
       return { comics, maxPage };
     },
@@ -304,12 +386,13 @@ class JComic extends ComicSource {
       const path = page === 1 ? `/search/${encoded}` : `/search/${encoded}/${page}`;
       const url = this._buildUrl(path);
 
-      const resp = await Network.get(url, { referer: JCOMIC_REFERER });
+      const resp = await Network.get(url, { referer: jcomicReferer });
       if (resp.status !== 200) throw new Error(resp.status);
 
       const doc = new HtmlDocument(resp.body);
       const comics = parseComicList(doc);
       const maxPage = parseMaxPage(doc);
+      doc.dispose();
 
       return { comics, maxPage };
     },
@@ -335,7 +418,7 @@ class JComic extends ComicSource {
     loadInfo: async (id) => {
       const encodedId = encodeURI(id);
       const url = this._buildUrl(`/eps/${encodedId}`);
-      const resp = await Network.get(url, { referer: JCOMIC_REFERER });
+      const resp = await Network.get(url, { referer: jcomicReferer });
       if (resp.status !== 200) throw new Error(resp.status);
 
       const doc = new HtmlDocument(resp.body);
@@ -344,6 +427,7 @@ class JComic extends ComicSource {
         'div.row.col-md-6.col-xs-12'
       );
       if (!infoBlock) {
+        doc.dispose();
         throw new Error("failed to parse comic info");
       }
 
@@ -418,6 +502,7 @@ class JComic extends ComicSource {
         categories,
         eps,
       };
+      doc.dispose();
 
       return new ComicDetails({
         title,
@@ -445,23 +530,32 @@ class JComic extends ComicSource {
         // epId 里可能有 11.5、14.2 等，直接当原始字符串 encode 一下
         path += "/" + encodeURIComponent(epId);
       }
-      const url = JCOMIC_BASE + path;
+      const url = jcomicBaseUrl + path;
 
-      const resp = await Network.get(url, { referer: JCOMIC_REFERER });
+      const resp = await Network.get(url, { referer: jcomicReferer });
       if (resp.status !== 200) throw new Error(resp.status);
 
       const doc = new HtmlDocument(resp.body);
-      const imgs = doc.querySelectorAll("img.comic-thumb");
-      const images = Array.from(imgs).map((img) => img.attributes["src"]);
+      // 站点改版后真实图片地址在 data-locked 属性 (JCOMIC_TRAP_ 前缀+反转+base64),
+      // src 已变为占位图。同时兼容可能存在的 img-responsive 样式。
+      const imgs = doc.querySelectorAll("img.comic-thumb, img.img-responsive");
+      const images = [];
+      imgs.forEach((img) => {
+        const attrs = img.attributes;
+        const decoded = decodeLockedImageUrl(attrs["data-locked"]);
+        images.push(decoded || attrs["src"] || "");
+      });
+      doc.dispose();
 
-      return { images };
+      return { images: images.filter(Boolean) };
     },
 
     onImageLoad: (url, comicId, epId) => {
       return {
         url,
         headers: {
-          referer: JCOMIC_REFERER,
+          referer: jcomicReferer,
+          cookie: jcomicAccessCookie,
         },
       };
     },
@@ -470,7 +564,8 @@ class JComic extends ComicSource {
       return {
         url,
         headers: {
-          referer: JCOMIC_REFERER,
+          referer: jcomicReferer,
+          cookie: jcomicAccessCookie,
         },
       };
     },

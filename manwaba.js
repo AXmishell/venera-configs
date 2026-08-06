@@ -8,7 +8,7 @@ class ManWaBa extends ComicSource {
   // unique id of the source
   key = "manwaba";
 
-  version = "1.0.3";
+  version = "1.0.4";
 
   minAppVersion = "1.4.0";
 
@@ -345,7 +345,6 @@ class ManWaBa extends ComicSource {
       let data = await this.fetchJson(url, { payload: undefined }).then(
         (res) => res.data
       );
-      this.logger.warn(`loadInfo: ${data}`);
       let chapterId = data.id;
       let chapterApi = `${this.api}/comic/chapter`;
       let params = {
@@ -406,6 +405,46 @@ class ManWaBa extends ComicSource {
       let images = imageRes.map((item) => item.url);
       return {
         images,
+      };
+    },
+    onImageLoad: (url, comicId, epId) => {
+      return {
+        url,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        },
+        // 图片 CDN (tu.mhttu.cc) 返回 AES-CBC 加密数据:
+        //   key = '0B6666A0-BB59-1381-B746-a0E4C9AC' 的 UTF-8 前 32 字节
+        //   IV  = 密文前 16 字节, 密文 = 剩余部分
+        //   解密后为 WebP, 末尾为 PKCS7 填充需去掉
+        onResponse: (buffer) => {
+          const bytes = new Uint8Array(buffer);
+          // 有效图片 (JPEG/PNG/WebP) 直接返回
+          if (
+            (bytes[0] === 0xff && bytes[1] === 0xd8) ||
+            (bytes[0] === 0x89 && bytes[1] === 0x50) ||
+            (bytes[0] === 0x52 && bytes[1] === 0x49)
+          ) {
+            return buffer;
+          }
+          if (buffer.byteLength < 32) return buffer;
+          try {
+            const key = Convert.encodeUtf8(
+              "0B6666A0-BB59-1381-B746-a0E4C9AC"
+            ).slice(0, 32);
+            const iv = buffer.slice(0, 16);
+            const ct = buffer.slice(16);
+            const decrypted = new Uint8Array(
+              Convert.decryptAesCbc(ct, key, iv)
+            );
+            const padLen = decrypted[decrypted.length - 1];
+            const data = decrypted.slice(0, decrypted.length - padLen);
+            return data.buffer;
+          } catch (e) {
+            return buffer;
+          }
+        },
       };
     },
   };

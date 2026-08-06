@@ -23,7 +23,7 @@ class HiPiManga extends ComicSource {
     // 唯一标识
     key = "hipmh"
 
-    version = "1.0.0"
+    version = "1.0.1"
 
     minAppVersion = "1.0.0"
 
@@ -401,20 +401,24 @@ class HiPiManga extends ComicSource {
                 )
                 if (worksRes.status === 200) {
                     const doc = new HtmlDocument(worksRes.body)
-                    const list = doc.querySelector("[data-work-related-list]")
-                    if (list) {
-                        recommend = list.querySelectorAll("li").map(li => {
-                            const a = li.querySelector("a")
-                            const href = a ? a.attributes["href"] : ""
-                            const linkId = href.includes("/works/") ? href.split("/works/")[1] : href
-                            const titleEl = a ? a.querySelector("div.truncate") : null
-                            const imgEl = li.querySelector("img")
-                            return new Comic({
-                                id: linkId,
-                                title: titleEl ? titleEl.text : "",
-                                cover: imgEl ? imgEl.attributes["src"] : "",
-                            })
-                        }).filter(c => c.id)
+                    try {
+                        const list = doc.querySelector("[data-work-related-list]")
+                        if (list) {
+                            recommend = list.querySelectorAll("li").map(li => {
+                                const a = li.querySelector("a")
+                                const href = a ? a.attributes["href"] : ""
+                                const linkId = href.includes("/works/") ? href.split("/works/")[1] : href
+                                const titleEl = a ? a.querySelector("div.truncate") : null
+                                const imgEl = li.querySelector("img")
+                                return new Comic({
+                                    id: linkId,
+                                    title: titleEl ? titleEl.text : "",
+                                    cover: imgEl ? imgEl.attributes["src"] : "",
+                                })
+                            }).filter(c => c.id)
+                        }
+                    } finally {
+                        doc.dispose()
                     }
                 }
             } catch (e) {

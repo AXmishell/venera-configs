@@ -18,10 +18,10 @@
 curl 'https://www.yckceo.com/yiciyuan/tuyuan/jsons?id=946-945-944' -o sources.json
 
 # 解密
-python3 tools/decrypt_ycy.py sources.json decrypted.json
+python3 decrypt_ycy.py sources.json decrypted.json
 
 # 直接输出到 stdout
-python3 tools/decrypt_ycy.py sources.json > decrypted.json
+python3 decrypt_ycy.py sources.json > decrypted.json
 ```
 
 脚本会打印成功/失败统计，失败项包含源名称、字段和错误原因。

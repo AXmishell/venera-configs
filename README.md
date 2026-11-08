@@ -75,3 +75,32 @@ RSA、MD5、自定义位解码均为纯 Python 实现。
 - 解密结果只恢复规则文本，不代表站点仍可用；站点改版后仍需适配。
 - 常量来自特定版本的 APK，客户端更新后可能变化。
 - 仅用于规则兼容/迁移研究，请遵守目标站点的使用条款。
+
+---
+
+# 栗子漫画协议工具
+
+`decrypt_lizimh.py` 与 `lizimh.md` 记录 `com.hbsclj.uth`（栗子漫画 1.1.7）的接口签名、TXT 域名发现、COS 启动配置、`$jp$` 图片混淆和章节图片探测方式。
+
+## 快速开始
+
+```bash
+# 解析当前 API 域名
+python3 decrypt_lizimh.py discover
+
+# 生成签名 URL
+python3 decrypt_lizimh.py sign /app/api/home/data
+
+# 请求公开接口
+python3 decrypt_lizimh.py fetch /app/api/v2/detail/22613 --json
+
+# 解密 $jp$ 图片
+python3 decrypt_lizimh.py image --url 'https://t1.imge.store/Manual/.../65.webp' -o 65.webp
+
+# 从章节封面探测页码
+python3 decrypt_lizimh.py pages --cover '/3/22613/679798/8.webp'
+```
+
+完整协议说明见 [lizimh.md](lizimh.md)。
+
+依赖 Python 3.8+ 和 `openssl` 命令行。HTTP 请求遵循 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量。
